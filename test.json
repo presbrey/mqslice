@@ -1,0 +1,13 @@
+{
+    "source": "testbin",
+    "sinks": {
+        "test-0": {
+            "regex": "^[^1]",
+            "type": "fanout"
+        },
+        "test-1": {
+            "regex": "^1",
+            "type": "fanout"
+        }
+    }
+}
