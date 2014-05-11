@@ -14,15 +14,18 @@ import (
 )
 
 var (
+	defaultUri = "amqp://guest:guest@localhost:5672/"
+
 	backoff = flag.Duration("backoff", time.Second, "")
 	buffer  = flag.Int("buffer", 2048, "channel capacity + prefetch")
 	config  = flag.String("config", "mqslice.json", "config file")
 	debug   = flag.Bool("debug", false, "")
 	queue   = flag.String("queue", "mqslice", "name of primary intake queue")
-	uri     = flag.String("uri", "amqp://localhost/", "AMQP URI")
+	uri     = flag.String("uri", defaultUri, "AMQP URI")
 )
 
 func init() {
+	flag.Parse()
 	if os.Getenv("GOMAXPROCS") == "" {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
@@ -60,7 +63,7 @@ func NewServer(uri, cfg string) (*Server, error) {
 		return nil, err
 	}
 
-	if len(uri) > 0 {
+	if len(uri) > 0 && uri != defaultUri {
 		s.Uri = uri
 	}
 	for _, v := range s.Sinks {
