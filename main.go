@@ -123,9 +123,10 @@ func (s *Server) run() error {
 			)
 			for s.alive {
 				if err != nil {
+					ch = nil
 					log.Println(err)
-					time.Sleep(*backoff)
 					err = nil
+					time.Sleep(*backoff)
 					continue
 				}
 				if len(elt) == 0 {
@@ -165,9 +166,10 @@ func (s *Server) consumer() {
 	)
 	for s.alive {
 		if err != nil {
+			ch = nil
 			log.Println(err)
-			time.Sleep(*backoff)
 			err = nil
+			time.Sleep(*backoff)
 			continue
 		}
 		if ch == nil {
