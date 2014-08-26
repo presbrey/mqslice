@@ -5,6 +5,7 @@ import (
 	"flag"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"regexp"
 	"runtime"
@@ -55,17 +56,35 @@ type Server struct {
 	kill  chan bool
 }
 
-func NewServer(uri, cfg string) (*Server, error) {
+func NewServer(uri, filename string) (*Server, error) {
+	var (
+		b   []byte
+		err error
+	)
+
 	s := new(Server)
 	s.alive = true
 	s.kill = make(chan bool)
 	s.ch = make(chan []byte, *buffer)
 
-	if b, err := ioutil.ReadFile(cfg); err != nil {
+	if len(filename) > 0 &&
+		(filename[0:5] == "http:" ||
+			filename[0:6] == "https:") {
+		resp, err := http.Get(filename)
+		if err != nil {
+			return nil, err
+		}
+		b, err = ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+	} else {
+		b, err = ioutil.ReadFile(filename)
+	}
+	if err != nil {
 		return nil, err
-	} else if err := json.Unmarshal(b, s); err != nil {
+	} else if err = json.Unmarshal(b, s); err != nil {
 		return nil, err
 	}
+
 	if len(uri) > 0 && uri != defaultUri {
 		s.Uri = uri
 	}
