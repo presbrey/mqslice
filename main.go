@@ -21,11 +21,15 @@ var (
 	config  = flag.String("config", "mqslice.json", "config file")
 	debug   = flag.Bool("debug", false, "")
 	queue   = flag.String("queue", "mqslice", "name of primary intake queue")
+	threads = flag.Int("threads", 0, "")
 	uri     = flag.String("uri", defaultUri, "AMQP URI")
 )
 
 func init() {
 	flag.Parse()
+	if *threads == 0 {
+		*threads = runtime.NumCPU()
+	}
 	if os.Getenv("GOMAXPROCS") == "" {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
@@ -62,24 +66,14 @@ func NewServer(uri, cfg string) (*Server, error) {
 	} else if err := json.Unmarshal(b, s); err != nil {
 		return nil, err
 	}
-
 	if len(uri) > 0 && uri != defaultUri {
 		s.Uri = uri
 	}
-	for _, v := range s.Sinks {
-		v.ch = make(chan []byte, *buffer)
-		v.regex = regexp.MustCompile(v.Regex)
+	for _, sink := range s.Sinks {
+		sink.ch = make(chan []byte, *buffer)
+		sink.regex = regexp.MustCompile(sink.Regex)
 	}
-	go func() {
-		for s.alive {
-			select {
-			case elt := <-s.ch:
-				for _, v := range s.Sinks {
-					v.ch <- elt
-				}
-			}
-		}
-	}()
+
 	return s, nil
 }
 
@@ -107,15 +101,13 @@ func (s *Server) run() error {
 	if err != nil {
 		return err
 	}
+
 	for name, sink := range s.Sinks {
 		if err := ch.ExchangeDeclare(name, sink.Type, true, false, false, false, nil); err != nil {
 			return err
 		}
-	}
-	for name, sink := range s.Sinks {
-		name := name
-		sink := sink
-		go func() {
+
+		go func(name string, sink *Sink) {
 			var (
 				ch  *amqp.Channel
 				elt []byte
@@ -130,13 +122,7 @@ func (s *Server) run() error {
 					continue
 				}
 				if len(elt) == 0 {
-					select {
-					case elt = <-sink.ch:
-					}
-				}
-				if sink.regex != nil && !sink.regex.Match(elt) {
-					elt = nil
-					continue
+					elt = <-sink.ch
 				}
 				if ch == nil {
 					if ch, err = s.dial(); err != nil {
@@ -148,6 +134,20 @@ func (s *Server) run() error {
 					if err == nil {
 						elt = nil
 					}
+				}
+			}
+		}(name, sink)
+	}
+
+	for i := 0; i < *threads; i++ {
+		go func() {
+			for s.alive {
+				elt := <-s.ch
+				for _, sink := range s.Sinks {
+					if sink.regex != nil && !sink.regex.Match(elt) {
+						continue
+					}
+					sink.ch <- elt
 				}
 			}
 		}()
@@ -204,9 +204,7 @@ func (s *Server) close() {
 }
 
 func (s *Server) wait() {
-	select {
-	case <-s.kill:
-	}
+	<-s.kill
 }
 
 func main() {
