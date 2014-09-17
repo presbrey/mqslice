@@ -21,8 +21,9 @@ var (
 	buffer  = flag.Int("buffer", 2048, "channel capacity + prefetch")
 	config  = flag.String("config", "mqslice.json", "config file")
 	debug   = flag.Bool("debug", false, "")
-	queue   = flag.String("queue", "mqslice", "name of primary intake queue")
+	queue   = flag.String("queue", "mqslice", "name of processing queue")
 	threads = flag.Int("threads", 0, "")
+	ttl     = flag.Uint("ttl", 0, "x-message-ttl for processing queue")
 	uri     = flag.String("uri", defaultUri, "AMQP URI")
 )
 
@@ -48,6 +49,7 @@ type Sink struct {
 type Server struct {
 	Source string
 	Sinks  map[string]*Sink
+	Ttl    uint64
 	Uri    string
 
 	ch chan []byte
@@ -183,6 +185,13 @@ func (s *Server) consumer() {
 
 		consumer <-chan amqp.Delivery
 	)
+	qArgs := amqp.Table{}
+	if *ttl > 0 {
+		qArgs["x-message-ttl"] = int64(*ttl)
+	}
+	if s.Ttl > 0 {
+		qArgs["x-message-ttl"] = int64(s.Ttl)
+	}
 	for s.alive {
 		if err != nil {
 			ch = nil
@@ -195,7 +204,7 @@ func (s *Server) consumer() {
 			ch, err = s.dial()
 		}
 		if ch != nil {
-			q, err = ch.QueueDeclare(*queue, false, true, true, false, nil)
+			q, err = ch.QueueDeclare(*queue, false, true, true, false, qArgs)
 			if err != nil {
 				continue
 			}
